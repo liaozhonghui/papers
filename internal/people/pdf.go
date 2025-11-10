@@ -46,11 +46,15 @@ func NewCrawler(paperType, dateStr string) (*Crawler, error) {
 		targetDate = parsedDate.In(loc)
 	}
 
+	// 创建日期目录路径
+	dateDir := targetDate.Format("20060102")
+	mergedDir := filepath.Join("dist", dateDir)
+
 	return &Crawler{
 		PaperType: paperType,
 		BaseURL:   fmt.Sprintf("https://paper.people.com.cn/%s/pc/layout", paperType),
 		OutputDir: "web/files",
-		MergedDir: "dist",
+		MergedDir: mergedDir,
 		Date:      targetDate,
 		PDFFiles:  make([]string, 0),
 	}, nil
