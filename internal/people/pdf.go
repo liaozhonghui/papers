@@ -16,6 +16,7 @@ import (
 
 // Crawler 人民日报爬虫
 type Crawler struct {
+	PaperType string // 报纸类型，如 rmrb(人民日报)、jksb(健康时报)、zgnyb(中国能源报)等
 	BaseURL   string
 	OutputDir string
 	MergedDir string
@@ -25,9 +26,10 @@ type Crawler struct {
 }
 
 // NewCrawler 创建新的爬虫实例
+// paperType: 报纸类型，如 "rmrb"(人民日报)、"jksb"(健康时报)、"zgnyb"(中国能源报)等
 // dateStr: 可选的日期字符串，格式为 "2006-01-02" (如 "2025-11-10")
 // 如果为空字符串，则使用当前东8区时间
-func NewCrawler(dateStr string) (*Crawler, error) {
+func NewCrawler(paperType, dateStr string) (*Crawler, error) {
 	var targetDate time.Time
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 
@@ -45,7 +47,8 @@ func NewCrawler(dateStr string) (*Crawler, error) {
 	}
 
 	return &Crawler{
-		BaseURL:   "https://paper.people.com.cn/rmrb/pc/layout",
+		PaperType: paperType,
+		BaseURL:   fmt.Sprintf("https://paper.people.com.cn/%s/pc/layout", paperType),
 		OutputDir: "web/files",
 		MergedDir: "dist",
 		Date:      targetDate,
@@ -203,7 +206,7 @@ func (c *Crawler) downloadPDF(page int) error {
 
 		// 若路径以 "attachement" 开头，补全前缀
 		if strings.HasPrefix(cleanPath, "attachement") {
-			pdfURL = "https://paper.people.com.cn/rmrb/pc/" + cleanPath
+			pdfURL = fmt.Sprintf("https://paper.people.com.cn/%s/pc/%s", c.PaperType, cleanPath)
 		} else {
 			// 其它情况直接基于站点根路径补全
 			pdfURL = "https://paper.people.com.cn/" + cleanPath
@@ -228,8 +231,8 @@ func (c *Crawler) savePDF(url string, page int) error {
 		return fmt.Errorf("HTTP状态码: %d", resp.StatusCode)
 	}
 
-	// 生成文件名
-	filename := fmt.Sprintf("%s_%02d.pdf", c.Date.Format("20060102"), page)
+	// 生成文件名: paperType_日期_版号.pdf (如 rmrb_20250110_01.pdf)
+	filename := fmt.Sprintf("%s_%s_%02d.pdf", c.PaperType, c.Date.Format("20060102"), page)
 	filepath := filepath.Join(c.OutputDir, filename)
 
 	// 创建文件
@@ -255,7 +258,8 @@ func (c *Crawler) mergePDFs() error {
 		return fmt.Errorf("没有PDF文件需要合并")
 	}
 
-	outputFile := filepath.Join(c.MergedDir, fmt.Sprintf("rmrb_%s.pdf", c.Date.Format("20060102")))
+	// 输出文件名: paperType_日期.pdf (如 rmrb_20250110.pdf)
+	outputFile := filepath.Join(c.MergedDir, fmt.Sprintf("%s_%s.pdf", c.PaperType, c.Date.Format("20060102")))
 
 	// 如果输出文件已存在，先删除（确保可以覆盖）
 	if _, err := os.Stat(outputFile); err == nil {
@@ -268,6 +272,10 @@ func (c *Crawler) mergePDFs() error {
 	// 使用pdfcpu合并PDF
 	conf := model.NewDefaultConfiguration()
 
+	// 在合并前等待5秒
+	fmt.Println("等待5秒后开始合并...")
+	time.Sleep(5 * time.Second)
+
 	// MergeCreateFile参数: inputFiles, outputFile, dividerPage(是否插入分隔页), config
 	err := api.MergeCreateFile(c.PDFFiles, outputFile, false, conf)
 	if err != nil {
@@ -276,14 +284,17 @@ func (c *Crawler) mergePDFs() error {
 
 	fmt.Printf("合并后的文件保存至: %s\n", outputFile)
 
-	// // 合并成功后，删除所有临时PDF文件
-	// fmt.Println("清理临时文件...")
-	// for _, file := range c.PDFFiles {
-	// 	if err := os.Remove(file); err != nil {
-	// 		fmt.Printf("警告: 删除临时文件失败 %s: %v\n", file, err)
-	// 	}
-	// }
-	// fmt.Printf("已删除 %d 个临时PDF文件\n", len(c.PDFFiles))
+	fmt.Println("等待5秒后开始删除临时文件...")
+	time.Sleep(5 * time.Second)
+
+	// 合并成功后，删除所有临时PDF文件
+	fmt.Println("清理临时文件...")
+	for _, file := range c.PDFFiles {
+		if err := os.Remove(file); err != nil {
+			fmt.Printf("警告: 删除临时文件失败 %s: %v\n", file, err)
+		}
+	}
+	fmt.Printf("已删除 %d 个临时PDF文件\n", len(c.PDFFiles))
 
 	return nil
 } // GetDateString 获取日期字符串（用于测试）
