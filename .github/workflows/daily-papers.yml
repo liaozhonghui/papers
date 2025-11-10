@@ -1,0 +1,86 @@
+name: Daily Papers Crawler
+
+on:
+  # 定时执行：每天北京时间早上 8:00 (UTC 0:00)
+  schedule:
+    - cron: '0 0 * * *'
+  
+  # 允许手动触发
+  workflow_dispatch:
+  
+  # 推送到 main 分支时触发（可选，用于测试）
+  # push:
+  #   branches: [ main ]
+
+jobs:
+  crawl-and-commit:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # 2. 设置 Go 环境
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+      
+      # 3. 下载依赖
+      - name: Download dependencies
+        run: go mod download
+      
+      # 4. 运行爬虫 - 人民日报
+      - name: Crawl People's Daily (RMRB)
+        run: go run cmd/main.go -p rmrb
+        continue-on-error: true
+      
+      # 5. 运行爬虫 - 中国城市报
+      - name: Crawl China City News (ZGCSB)
+        run: go run cmd/main.go -p zgcsb
+        continue-on-error: true
+      
+      # 6. 运行爬虫 - 健康时报
+      - name: Crawl Health Times (JKSB)
+        run: go run cmd/main.go -p jksb
+        continue-on-error: true
+      
+      # 7. 检查是否有新文件生成
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if [[ -n $(git status -s) ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+      
+      # 8. 提交并推送新生成的 PDF 文件
+      - name: Commit and push PDFs
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # 添加生成的 PDF 文件
+          git add web/files/*.pdf
+          
+          # 获取当前日期
+          DATE=$(date +'%Y-%m-%d')
+          
+          # 提交
+          git commit -m "自动更新报纸 PDF - $DATE"
+          
+          # 推送
+          git push
+      
+      # 9. 上传 artifacts（可选，用于在 Actions 页面下载）
+      - name: Upload PDFs as artifacts
+        if: steps.check_changes.outputs.has_changes == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-papers-${{ github.run_number }}
+          path: web/files/*.pdf
+          retention-days: 30
