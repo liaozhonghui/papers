@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/PuerkitoBio/goquery v1.9.1
 	github.com/pdfcpu/pdfcpu v0.8.0
+	github.com/spf13/cobra v1.10.1
 )
 
 require (
@@ -15,7 +16,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/spf13/cobra v1.10.1 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/net v0.24.0 // indirect
