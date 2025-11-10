@@ -1,3 +1,9 @@
 .vscode
-
 .bin
+web/files/**/*
+
+go.sum
+*.log
+.DS_Store
+
+*.pdf
