@@ -1,7 +1,7 @@
 name: Daily Papers Crawler
 
 on:
-  # 定时执行：每天北京时间早上 8:00 (UTC 0:00)
+  # 定时执行：每天北京时间早上 7:30 (UTC 23:30)
   schedule:
     - cron: "30 23 * * *"
 
@@ -34,20 +34,10 @@ jobs:
 
       # 4. 运行爬虫 - 人民日报
       - name: Crawl People's Daily (RMRB)
-        run: go run cmd/main.go -p rmrb
+        run: go run cmd/main.go people -p rmrb,zgcsb,jksb,fcyym
         continue-on-error: true
 
-      # 5. 运行爬虫 - 中国城市报
-      - name: Crawl China City News (ZGCSB)
-        run: go run cmd/main.go -p zgcsb
-        continue-on-error: true
-
-      # 6. 运行爬虫 - 健康时报
-      - name: Crawl Health Times (JKSB)
-        run: go run cmd/main.go -p jksb
-        continue-on-error: true
-
-      # 7. 获取当前东八区日期
+      # 5. 获取当前东八区日期
       - name: Get current date
         id: date
         run: |
@@ -56,7 +46,7 @@ jobs:
           echo "date=$DATE" >> $GITHUB_OUTPUT
           echo "date_display=$DATE_DISPLAY" >> $GITHUB_OUTPUT
 
-      # 8. 检查是否有 PDF 文件生成
+      # 6. 检查是否有 PDF 文件生成
       - name: Check for PDFs
         id: check_pdfs
         run: |
@@ -66,7 +56,7 @@ jobs:
             echo "has_pdfs=false" >> $GITHUB_OUTPUT
           fi
 
-      # 9. 创建 GitHub Release 并上传 PDF 文件
+      # 7. 创建 GitHub Release 并上传 PDF 文件
       - name: Create Release and Upload PDFs
         if: steps.check_pdfs.outputs.has_pdfs == 'true'
         uses: softprops/action-gh-release@v1
@@ -91,7 +81,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 10. 上传 artifacts（可选，用于在 Actions 页面下载）
+      # 8. 上传 artifacts（可选，用于在 Actions 页面下载）
       - name: Upload PDFs as artifacts
         if: steps.check_pdfs.outputs.has_pdfs == 'true'
         uses: actions/upload-artifact@v4

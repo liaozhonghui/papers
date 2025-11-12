@@ -1,0 +1,94 @@
+name: Daily Papers Crawler (Anhui)
+
+on:
+    # 定时执行:每天北京时间早上 7:30 (UTC 23:30)
+    schedule:
+        - cron: "30 23 * * *"
+
+    # 允许手动触发
+    workflow_dispatch:
+
+    # 推送到 main 分支时触发(可选,用于测试)
+    # push:
+    #   branches: [ main ]
+
+jobs:
+    crawl-and-commit:
+        runs-on: ubuntu-latest
+
+        steps:
+            # 1. 检出代码
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            # 2. 设置 Go 环境
+            - name: Set up Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: "1.23"
+                  cache: true
+
+            # 3. 下载依赖
+            - name: Download dependencies
+              run: go mod download
+
+            # 4. 运行爬虫 - 安徽报纸
+            - name: Crawl Anhui Papers
+              run: go run cmd/main.go anhui
+              continue-on-error: true
+
+            # 5. 获取当前东八区日期
+            - name: Get current date
+              id: date
+              run: |
+                  DATE=$(TZ='Asia/Shanghai' date +'%Y%m%d')
+                  DATE_DISPLAY=$(TZ='Asia/Shanghai' date +'%Y-%m-%d')
+                  echo "date=$DATE" >> $GITHUB_OUTPUT
+                  echo "date_display=$DATE_DISPLAY" >> $GITHUB_OUTPUT
+
+            # 6. 检查是否有 PDF 文件生成
+            - name: Check for PDFs
+              id: check_pdfs
+              run: |
+                  if ls dist/${{ steps.date.outputs.date }}/*.pdf 1> /dev/null 2>&1; then
+                    echo "has_pdfs=true" >> $GITHUB_OUTPUT
+                  else
+                    echo "has_pdfs=false" >> $GITHUB_OUTPUT
+                  fi
+
+            # 7. 创建 GitHub Release 并上传 PDF 文件
+            - name: Create Release and Upload PDFs
+              if: steps.check_pdfs.outputs.has_pdfs == 'true'
+              uses: softprops/action-gh-release@v1
+              with:
+                  tag_name: papers-${{ steps.date.outputs.date }}
+                  name: 报纸 PDF - ${{ steps.date.outputs.date_display }}
+                  body: |
+                      ## 📰 每日报纸 PDF (安徽)
+
+                      生成日期:${{ steps.date.outputs.date_display }}
+
+                      包含以下报纸:
+                      - 安徽日报 (ahrb)
+                      - 法治报 (fzb)
+                      - 江淮时报 (jhsb)
+                      - 农村报 (ncb)
+                      - PC (pc)
+                      - 新安晚报 (xawb)
+
+                      请在下方 Assets 中下载对应的 PDF 文件。
+                  files: |
+                      dist/${{ steps.date.outputs.date }}/*.pdf
+                  draft: false
+                  prerelease: false
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            # 8. 上传 artifacts(可选,用于在 Actions 页面下载)
+            - name: Upload PDFs as artifacts
+              if: steps.check_pdfs.outputs.has_pdfs == 'true'
+              uses: actions/upload-artifact@v4
+              with:
+                  name: daily-papers-${{ steps.date.outputs.date }}
+                  path: dist/${{ steps.date.outputs.date }}/*.pdf
+                  retention-days: 7
