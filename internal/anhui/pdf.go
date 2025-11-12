@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -153,8 +154,43 @@ func (c *Crawler) downloadPDF(page int) error {
 }
 
 // savePDF 保存PDF文件
-func (c *Crawler) savePDF(url string, page int) error {
-	resp, err := http.Get(url)
+func (c *Crawler) savePDF(pdfURL string, page int) error {
+	// 生成文件名: paperType_日期_版号.pdf
+	filename := fmt.Sprintf("%s_%s_%02d.pdf", c.PaperType, c.Date.Format("20060102"), page)
+	destPath := filepath.Join(c.OutputDir, filename)
+
+	// 检查是否是本地文件（XAWB的情况）
+	if strings.HasPrefix(pdfURL, "file://") {
+		// 本地文件，直接移动或复制
+		srcPath := strings.TrimPrefix(pdfURL, "file://")
+
+		// 复制文件
+		srcFile, err := os.Open(srcPath)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+
+		destFile, err := os.Create(destPath)
+		if err != nil {
+			return err
+		}
+		defer destFile.Close()
+
+		_, err = io.Copy(destFile, srcFile)
+		if err != nil {
+			return err
+		}
+
+		// 删除临时文件
+		os.Remove(srcPath)
+
+		c.PDFFiles = append(c.PDFFiles, destPath)
+		return nil
+	}
+
+	// 网络URL，正常下载
+	resp, err := http.Get(pdfURL)
 	if err != nil {
 		return err
 	}
@@ -164,12 +200,8 @@ func (c *Crawler) savePDF(url string, page int) error {
 		return fmt.Errorf("HTTP状态码: %d", resp.StatusCode)
 	}
 
-	// 生成文件名: paperType_日期_版号.pdf
-	filename := fmt.Sprintf("%s_%s_%02d.pdf", c.PaperType, c.Date.Format("20060102"), page)
-	filepath := filepath.Join(c.OutputDir, filename)
-
 	// 创建文件
-	out, err := os.Create(filepath)
+	out, err := os.Create(destPath)
 	if err != nil {
 		return err
 	}
@@ -181,7 +213,7 @@ func (c *Crawler) savePDF(url string, page int) error {
 		return err
 	}
 
-	c.PDFFiles = append(c.PDFFiles, filepath)
+	c.PDFFiles = append(c.PDFFiles, destPath)
 	return nil
 }
 

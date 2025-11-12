@@ -36,7 +36,7 @@ func runanhuiCrawler(cmd *cobra.Command, args []string) {
 	var anhuiPaperTypes []string
 	if anhuiPaperType == "" {
 		// 如果没有指定，下载所有类型
-		anhuiPaperTypes = []string{"ahrb", "ncb", "jhsb", "fzb", "pc"}
+		anhuiPaperTypes = []string{"ahrb", "ncb", "jhsb", "fzb", "pc", "xawb"}
 		fmt.Println("未指定报纸类型，将下载所有报纸")
 	} else {
 		// 按逗号分隔
@@ -90,6 +90,9 @@ func runanhuiCrawler(cmd *cobra.Command, args []string) {
 			fetcher = anhui.NewFZBFetcher(tempCrawler.GetDate())
 		case "pc":
 			fetcher = anhui.NewPCFetcher(tempCrawler.GetDate())
+		case "xawb":
+			// XAWB需要outputDir来存储临时文件
+			fetcher = anhui.NewXAWBFetcher(tempCrawler.GetDate(), "web/files")
 		default:
 			fmt.Fprintf(os.Stderr, "未知的报纸类型: %s\n", pt)
 			failCount++
@@ -132,6 +135,7 @@ func getAnhuiPaperName(anhuiPaperType string) string {
 		"jhsb": "江淮时报",
 		"fzb":  "安徽法治报",
 		"pc":   "安徽商报",
+		"xawb": "新安晚报",
 	}
 	if name, ok := names[anhuiPaperType]; ok {
 		return name
