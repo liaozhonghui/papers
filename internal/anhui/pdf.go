@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -14,22 +13,33 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 )
 
-// Crawler 日报爬虫
+// PaperFetcher 定义报纸特定的获取逻辑接口
+type PaperFetcher interface {
+	// BuildURL 构建指定版面的URL
+	BuildURL(page int) string
+	// GetPageCount 获取总版数
+	GetPageCount(url string) (int, error)
+	// FindPDFURL 从页面中查找PDF下载链接
+	// baseURL: 当前页面的URL，用于解析相对路径
+	FindPDFURL(doc *goquery.Document, baseURL string) (string, error)
+}
+
+// Crawler 日报爬虫基础结构
 type Crawler struct {
-	PaperType string // 报纸类型，
-	BaseURL   string
+	PaperType string // 报纸类型
 	OutputDir string
 	MergedDir string
 	Date      time.Time
 	PageCount int
 	PDFFiles  []string
+	Fetcher   PaperFetcher // 特定报纸的获取逻辑
 }
 
 // NewCrawler 创建新的爬虫实例
-// paperType: 报纸类型 (如 "ahrb", "ncb", "jhsb")
+// fetcher: 特定报纸的获取逻辑实现
 // dateStr: 可选的日期字符串，格式为 "2006-01-02" (如 "2025-11-10")
 // 如果为空字符串，则使用当前东8区时间
-func NewCrawler(paperType, dateStr string) (*Crawler, error) {
+func NewCrawler(paperType string, fetcher PaperFetcher, dateStr string) (*Crawler, error) {
 	var targetDate time.Time
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 
@@ -52,17 +62,17 @@ func NewCrawler(paperType, dateStr string) (*Crawler, error) {
 
 	return &Crawler{
 		PaperType: paperType,
-		BaseURL:   fmt.Sprintf("https://szb.ahnews.com.cn/%s/pc/layout", paperType),
 		OutputDir: "web/files",
 		MergedDir: mergedDir,
 		Date:      targetDate,
 		PDFFiles:  make([]string, 0),
+		Fetcher:   fetcher,
 	}, nil
 }
 
 // Run 执行爬虫任务
 func (c *Crawler) Run() error {
-	fmt.Println("开始爬取安徽日报PDF...")
+	fmt.Printf("开始爬取%s PDF...\n", c.PaperType)
 
 	// 创建输出目录
 	if err := c.createDirectories(); err != nil {
@@ -70,7 +80,8 @@ func (c *Crawler) Run() error {
 	}
 
 	// 获取版数
-	pageCount, err := c.getPageCount()
+	url := c.Fetcher.BuildURL(1)
+	pageCount, err := c.Fetcher.GetPageCount(url)
 	if err != nil {
 		return fmt.Errorf("获取版数失败: %v", err)
 	}
@@ -110,57 +121,9 @@ func (c *Crawler) createDirectories() error {
 	return nil
 }
 
-// getPageCount 获取总版数
-func (c *Crawler) getPageCount() (int, error) {
-	url := c.buildURL(1)
-
-	fmt.Println(url)
-	resp, err := http.Get(url)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("HTTP状态码: %d", resp.StatusCode)
-	}
-
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	// 查找版面数量
-	// 根据CSS选择器找到版面列表
-	count := 0
-	doc.Find("body > div.main.w1000 > div.right.right-main > div.swiper-box > div > div").Each(func(i int, s *goquery.Selection) {
-		count++
-	})
-
-	if count == 0 {
-		// 尝试另一种方式：查找所有版面链接
-		doc.Find(".swiper-slide").Each(func(i int, s *goquery.Selection) {
-			count++
-		})
-	}
-
-	if count == 0 {
-		// 如果还是找不到，默认设置为8版（人民日报常见版数）
-		count = 8
-	}
-
-	return count, nil
-}
-
-// buildURL 构建指定版面的URL
-func (c *Crawler) buildURL(page int) string {
-	dateStr := c.Date.Format("200601/02")
-	return fmt.Sprintf("%s/%s/node_%02d.html", c.BaseURL, dateStr, page)
-}
-
 // downloadPDF 下载指定版面的PDF
 func (c *Crawler) downloadPDF(page int) error {
-	url := c.buildURL(page)
+	url := c.Fetcher.BuildURL(page)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -177,45 +140,10 @@ func (c *Crawler) downloadPDF(page int) error {
 		return err
 	}
 
-	// 查找PDF链接
-	var pdfURL string
-	doc.Find("body > div.main.w1000 > div.left.paper-box > div.paper-bot > p.right.btn > a").Each(func(i int, s *goquery.Selection) {
-		href, exists := s.Attr("href")
-		if exists && strings.Contains(href, ".pdf") {
-			pdfURL = href
-		}
-	})
-
-	// 如果找不到，尝试其他选择器
-	if pdfURL == "" {
-		doc.Find("a").Each(func(i int, s *goquery.Selection) {
-			href, exists := s.Attr("href")
-			text := s.Text()
-			if exists && strings.Contains(href, ".pdf") && strings.Contains(text, "PDF") {
-				pdfURL = href
-			}
-		})
-	}
-
-	if pdfURL == "" {
-		return fmt.Errorf("未找到PDF链接")
-	}
-
-	// 如果是相对路径，补全URL
-	if !strings.HasPrefix(pdfURL, "http") {
-		// 处理相对路径，如 ../../../attachement/...
-		cleanPath := pdfURL
-		for strings.HasPrefix(cleanPath, "../") {
-			cleanPath = strings.TrimPrefix(cleanPath, "../")
-		}
-
-		// 若路径以 "attachement" 开头，补全前缀
-		if strings.HasPrefix(cleanPath, "attachement") {
-			pdfURL = fmt.Sprintf("https://szb.ahnews.com.cn/%s/pc/%s", c.PaperType, cleanPath)
-		} else {
-			// 其它情况直接基于站点根路径补全
-			pdfURL = "https://szb.ahnews.com.cn/" + cleanPath
-		}
+	// 使用特定报纸的逻辑查找PDF链接，传入当前页面URL用于解析相对路径
+	pdfURL, err := c.Fetcher.FindPDFURL(doc, url)
+	if err != nil {
+		return err
 	}
 
 	fmt.Printf("第 %d 版 PDF URL: %s\n", page, pdfURL)
@@ -302,7 +230,19 @@ func (c *Crawler) mergePDFs() error {
 	fmt.Printf("已删除 %d 个临时PDF文件\n", len(c.PDFFiles))
 
 	return nil
-} // GetDateString 获取日期字符串（用于测试）
+}
+
+// GetDateString 获取日期字符串（用于测试）
 func (c *Crawler) GetDateString() string {
 	return c.Date.Format("2006-01-02")
+}
+
+// GetDate 获取日期对象
+func (c *Crawler) GetDate() time.Time {
+	return c.Date
+}
+
+// GetPaperType 获取报纸类型
+func (c *Crawler) GetPaperType() string {
+	return c.PaperType
 }

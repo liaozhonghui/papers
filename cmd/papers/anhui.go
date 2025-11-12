@@ -36,7 +36,7 @@ func runanhuiCrawler(cmd *cobra.Command, args []string) {
 	var anhuiPaperTypes []string
 	if anhuiPaperType == "" {
 		// 如果没有指定，下载所有类型
-		anhuiPaperTypes = []string{"ahrb", "ncb", "jhsb"}
+		anhuiPaperTypes = []string{"ahrb", "ncb", "jhsb", "fzb", "pc"}
 		fmt.Println("未指定报纸类型，将下载所有报纸")
 	} else {
 		// 按逗号分隔
@@ -64,8 +64,41 @@ func runanhuiCrawler(cmd *cobra.Command, args []string) {
 	for _, pt := range anhuiPaperTypes {
 		fmt.Printf("=== 开始爬取 %s ===\n", getAnhuiPaperName(pt))
 
-		// 创建爬虫实例
-		crawler, err := anhui.NewCrawler(pt, anhuiDateStr)
+		// 创建对应的Fetcher
+		var fetcher anhui.PaperFetcher
+		var crawler *anhui.Crawler
+		var err error
+
+		// 先创建爬虫实例获取日期
+		tempCrawler, err := anhui.NewCrawler(pt, nil, anhuiDateStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "创建爬虫失败 (%s): %v\n", pt, err)
+			failCount++
+			fmt.Println()
+			continue
+		}
+
+		// 根据报纸类型创建对应的Fetcher
+		switch pt {
+		case "ahrb":
+			fetcher = anhui.NewAHRBFetcher(tempCrawler.GetDate())
+		case "ncb":
+			fetcher = anhui.NewNCBFetcher(tempCrawler.GetDate())
+		case "jhsb":
+			fetcher = anhui.NewJHSBFetcher(tempCrawler.GetDate())
+		case "fzb":
+			fetcher = anhui.NewFZBFetcher(tempCrawler.GetDate())
+		case "pc":
+			fetcher = anhui.NewPCFetcher(tempCrawler.GetDate())
+		default:
+			fmt.Fprintf(os.Stderr, "未知的报纸类型: %s\n", pt)
+			failCount++
+			fmt.Println()
+			continue
+		}
+
+		// 重新创建带Fetcher的爬虫实例
+		crawler, err = anhui.NewCrawler(pt, fetcher, anhuiDateStr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "创建爬虫失败 (%s): %v\n", pt, err)
 			failCount++
@@ -97,6 +130,8 @@ func getAnhuiPaperName(anhuiPaperType string) string {
 		"ahrb": "安徽日报",
 		"ncb":  "安徽日报农村版",
 		"jhsb": "江淮时报",
+		"fzb":  "安徽法治报",
+		"pc":   "安徽商报",
 	}
 	if name, ok := names[anhuiPaperType]; ok {
 		return name
