@@ -3,11 +3,11 @@ name: Daily Papers Crawler
 on:
   # 定时执行：每天北京时间早上 8:00 (UTC 0:00)
   schedule:
-    - cron: '0 0 * * *'
-  
+    - cron: "30 23 * * *"
+
   # 允许手动触发
   workflow_dispatch:
-  
+
   # 推送到 main 分支时触发（可选，用于测试）
   # push:
   #   branches: [ main ]
@@ -15,38 +15,38 @@ on:
 jobs:
   crawl-and-commit:
     runs-on: ubuntu-latest
-    
+
     steps:
       # 1. 检出代码
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       # 2. 设置 Go 环境
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: "1.23"
           cache: true
-      
+
       # 3. 下载依赖
       - name: Download dependencies
         run: go mod download
-      
+
       # 4. 运行爬虫 - 人民日报
       - name: Crawl People's Daily (RMRB)
         run: go run cmd/main.go -p rmrb
         continue-on-error: true
-      
+
       # 5. 运行爬虫 - 中国城市报
       - name: Crawl China City News (ZGCSB)
         run: go run cmd/main.go -p zgcsb
         continue-on-error: true
-      
+
       # 6. 运行爬虫 - 健康时报
       - name: Crawl Health Times (JKSB)
         run: go run cmd/main.go -p jksb
         continue-on-error: true
-      
+
       # 7. 获取当前东八区日期
       - name: Get current date
         id: date
@@ -55,7 +55,7 @@ jobs:
           DATE_DISPLAY=$(TZ='Asia/Shanghai' date +'%Y-%m-%d')
           echo "date=$DATE" >> $GITHUB_OUTPUT
           echo "date_display=$DATE_DISPLAY" >> $GITHUB_OUTPUT
-      
+
       # 8. 检查是否有 PDF 文件生成
       - name: Check for PDFs
         id: check_pdfs
@@ -65,7 +65,7 @@ jobs:
           else
             echo "has_pdfs=false" >> $GITHUB_OUTPUT
           fi
-      
+
       # 9. 创建 GitHub Release 并上传 PDF 文件
       - name: Create Release and Upload PDFs
         if: steps.check_pdfs.outputs.has_pdfs == 'true'
@@ -75,14 +75,14 @@ jobs:
           name: 报纸 PDF - ${{ steps.date.outputs.date_display }}
           body: |
             ## 📰 每日报纸 PDF
-            
+
             生成日期：${{ steps.date.outputs.date_display }}
-            
+
             包含以下报纸：
             - 人民日报 (rmrb)
             - 中国城市报 (zgcsb)
             - 健康时报 (jksb)
-            
+
             请在下方 Assets 中下载对应的 PDF 文件。
           files: |
             dist/${{ steps.date.outputs.date }}/*.pdf
@@ -90,7 +90,7 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       # 10. 上传 artifacts（可选，用于在 Actions 页面下载）
       - name: Upload PDFs as artifacts
         if: steps.check_pdfs.outputs.has_pdfs == 'true'
