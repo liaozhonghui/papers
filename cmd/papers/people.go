@@ -11,9 +11,31 @@ import (
 
 var peopleCmd = &cobra.Command{
 	Use:   "people",
-	Short: "人民日报系列PDF爬虫",
-	Long:  `下载人民日报、健康时报、中国城市报、讽刺与幽默等报纸的PDF文件`,
-	Run:   runPeopleCrawler,
+	Short: "爬取人民日报系列PDF",
+	Long: `爬取人民日报系列报纸的PDF文件并自动合并
+
+支持的报纸类型:
+  • rmrb   - 人民日报
+  • jksb   - 健康时报
+  • zgcsb  - 中国城市报
+  • fcyym  - 讽刺与幽默
+
+示例:
+  # 下载所有报纸（当天）
+  papers people
+
+  # 下载指定日期的所有报纸
+  papers people -d 2025-11-10
+
+  # 下载指定报纸
+  papers people -p rmrb
+
+  # 下载多个报纸
+  papers people -p rmrb,jksb
+
+  # 下载指定日期的指定报纸
+  papers people -d 2025-11-10 -p rmrb,jksb`,
+	Run: runPeopleCrawler,
 }
 
 var (
@@ -23,8 +45,8 @@ var (
 
 func init() {
 	// 添加命令行参数
-	peopleCmd.Flags().StringVarP(&peopleDateStr, "date", "d", "", "指定日期，格式: YYYY-MM-DD (如: 2025-11-09)，不指定则使用今天")
-	peopleCmd.Flags().StringVarP(&peoplePaperType, "paper", "p", "", "报纸类型，多个用逗号分隔 (rmrb,jksb,zgcsb,fcyym)，不指定则下载所有")
+	peopleCmd.Flags().StringVarP(&peopleDateStr, "date", "d", "", "指定日期，格式: YYYY-MM-DD (例: 2025-11-10)，默认为当天")
+	peopleCmd.Flags().StringVarP(&peoplePaperType, "paper", "p", "", "报纸类型，多个用逗号分隔 (例: rmrb,jksb)，默认下载所有")
 
 	rootCmd.AddCommand(peopleCmd)
 }
@@ -65,7 +87,7 @@ func runPeopleCrawler(cmd *cobra.Command, args []string) {
 		fmt.Printf("=== 开始爬取 %s ===\n", getPeoplePaperName(pt))
 
 		// 创建爬虫实例
-		crawler, err := people.NewCrawler(pt, peopleDateStr)
+		c, err := people.NewCrawler(pt, peopleDateStr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "创建爬虫失败 (%s): %v\n", pt, err)
 			failCount++
@@ -73,10 +95,10 @@ func runPeopleCrawler(cmd *cobra.Command, args []string) {
 			continue
 		}
 
-		fmt.Printf("爬取日期: %s (东8区时间)\n", crawler.GetDateString())
+		fmt.Printf("爬取日期: %s (东8区时间)\n", c.GetDateString())
 
 		// 执行爬虫任务
-		if err := crawler.Run(); err != nil {
+		if err := c.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "爬取失败 (%s): %v\n", pt, err)
 			failCount++
 		} else {

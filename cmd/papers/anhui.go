@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"papers/internal/anhui"
+	"papers/internal/crawler"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -11,9 +12,33 @@ import (
 
 var anhuiCmd = &cobra.Command{
 	Use:   "anhui",
-	Short: "安徽日报系列PDF爬虫",
-	Long:  `下载安徽日报、安徽商报等报纸的PDF文件`,
-	Run:   runanhuiCrawler,
+	Short: "爬取安徽日报系列PDF",
+	Long: `爬取安徽日报系列报纸的PDF文件并自动合并
+
+支持的报纸类型:
+  • ahrb  - 安徽日报
+  • ncb   - 安徽日报农村版
+  • jhsb  - 江淮时报
+  • fzb   - 安徽法治报
+  • pc    - 安徽商报
+  • xawb  - 新安晚报
+
+示例:
+  # 下载所有报纸（当天）
+  papers anhui
+
+  # 下载指定日期的所有报纸
+  papers anhui -d 2025-11-10
+
+  # 下载指定报纸
+  papers anhui -p ahrb
+
+  # 下载多个报纸
+  papers anhui -p ahrb,ncb,xawb
+
+  # 下载指定日期的指定报纸
+  papers anhui -d 2025-11-10 -p ahrb,ncb`,
+	Run: runanhuiCrawler,
 }
 
 var (
@@ -23,8 +48,8 @@ var (
 
 func init() {
 	// 添加命令行参数
-	anhuiCmd.Flags().StringVarP(&anhuiDateStr, "date", "d", "", "指定日期，格式: YYYY-MM-DD (如: 2025-11-09)，不指定则使用今天")
-	anhuiCmd.Flags().StringVarP(&anhuiPaperType, "paper", "p", "", "报纸类型，多个用逗号分隔 (rmrb,jksb,zgcsb,fcyym)，不指定则下载所有")
+	anhuiCmd.Flags().StringVarP(&anhuiDateStr, "date", "d", "", "指定日期，格式: YYYY-MM-DD (例: 2025-11-10)，默认为当天")
+	anhuiCmd.Flags().StringVarP(&anhuiPaperType, "paper", "p", "", "报纸类型，多个用逗号分隔 (例: ahrb,ncb,xawb)，默认下载所有")
 
 	rootCmd.AddCommand(anhuiCmd)
 }
@@ -65,8 +90,8 @@ func runanhuiCrawler(cmd *cobra.Command, args []string) {
 		fmt.Printf("=== 开始爬取 %s ===\n", getAnhuiPaperName(pt))
 
 		// 创建对应的Fetcher
-		var fetcher anhui.PaperFetcher
-		var crawler *anhui.Crawler
+		var fetcher crawler.PaperFetcher
+		var c *crawler.Crawler
 		var err error
 
 		// 先创建爬虫实例获取日期
@@ -101,7 +126,7 @@ func runanhuiCrawler(cmd *cobra.Command, args []string) {
 		}
 
 		// 重新创建带Fetcher的爬虫实例
-		crawler, err = anhui.NewCrawler(pt, fetcher, anhuiDateStr)
+		c, err = anhui.NewCrawler(pt, fetcher, anhuiDateStr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "创建爬虫失败 (%s): %v\n", pt, err)
 			failCount++
@@ -109,10 +134,10 @@ func runanhuiCrawler(cmd *cobra.Command, args []string) {
 			continue
 		}
 
-		fmt.Printf("爬取日期: %s (东8区时间)\n", crawler.GetDateString())
+		fmt.Printf("爬取日期: %s (东8区时间)\n", c.GetDateString())
 
 		// 执行爬虫任务
-		if err := crawler.Run(); err != nil {
+		if err := c.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "爬取失败 (%s): %v\n", pt, err)
 			failCount++
 		} else {
